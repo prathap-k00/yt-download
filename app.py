@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, flash
+from pytubefix import YouTube
 from werkzeug.utils import secure_filename
-import yt_dlp
 import os
 
 app = Flask(__name__)
@@ -9,7 +9,7 @@ app.secret_key = "supersecretkey"
 DOWNLOAD_FOLDER = "downloads"
 app.config["DOWNLOAD_FOLDER"] = DOWNLOAD_FOLDER
 
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+os.makedirs(DOWNLOAD_FOLDER)
 
 
 @app.route("/")
@@ -28,38 +28,36 @@ def download():
             flash("Invalid or empty URL", "danger")
             return redirect(url_for("home"))
 
-        ydl_opts = {
-            "outtmpl": os.path.join(app.config["DOWNLOAD_FOLDER"], "%(title)s.%(ext)s"),
-            "quiet": True,
-        }
+        yt = YouTube(url,use_po_token=True)
+        safe_title = secure_filename(yt.title)
 
         # VIDEO
         if f_type == "video":
-            if quality:
-                ydl_opts["format"] = f"bestvideo[height<={quality[:-1]}]+bestaudio/best"
-            else:
-                ydl_opts["format"] = "best"
+            stream = yt.streams.filter(
+                res=quality,
+                file_extension="mp4"
+            ).first()
+            filename = f"{safe_title}.mp4"
 
         # AUDIO
         else:
-            ydl_opts["format"] = "bestaudio/best"
-            ydl_opts["postprocessors"] = [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }]
+            stream = yt.streams.filter(
+                only_audio=True
+            ).first()
+            filename = f"{safe_title}.mp3"
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
+        if stream is None:
+            flash("Selected quality not available. Try 360p or Audio.", "danger")
+            return redirect(url_for("home"))
 
-            # If audio converted to mp3
-            if f_type != "video":
-                filename = os.path.splitext(filename)[0] + ".mp3"
+        stream.download(
+            output_path=app.config["DOWNLOAD_FOLDER"],
+            filename=filename
+        )
 
         return send_from_directory(
             app.config["DOWNLOAD_FOLDER"],
-            os.path.basename(filename),
+            filename,
             as_attachment=True
         )
 
@@ -69,4 +67,4 @@ def download():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000 )
