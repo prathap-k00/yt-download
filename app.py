@@ -28,7 +28,7 @@ def download():
             flash("Invalid or empty URL", "danger")
             return redirect(url_for("home"))
 
-        yt = YouTube(url,use_po_token=True)
+        yt = YouTube(url)
         safe_title = secure_filename(yt.title)
 
         # VIDEO
